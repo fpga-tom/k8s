@@ -1,0 +1,72 @@
+- hosts: master
+  become: yes
+  tasks:
+    - name: be sure firewalld is disabled
+      systemd: name=firewalld enabled=no
+
+    - name: be sure firewalld is stopped
+      systemd: name=firewalld state=stopped
+
+    - name: be sure docker is started
+      systemd: name=docker state=started enabled=yes
+
+    - name: Remove swapfile from /etc/fstab
+      mount:
+         name: swap
+         fstype: swap
+         state: absent
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+    - name: Set bridge-nf-call-{arptables,iptables} to 1
+      sysctl:
+        name: "{{ item }}"
+        state: present
+        value: 1
+        sysctl_file: /etc/sysctl.d/bridge-nf-call.conf
+        reload: yes
+      with_items:
+        - net.bridge.bridge-nf-call-iptables
+
+    - name: configure Docker to use systemd cgroup
+      copy:
+              dest: /etc/docker/daemon.json
+              src: daemon.json
+
+    - name: restart Docker
+      systemd: name=docker state=restarted
+
+    - name: initialize the cluster
+      shell: kubeadm init --pod-network-cidr=172.16.0.0/16 >> cluster_initialized.txt
+      args:
+        chdir: $HOME
+        creates: cluster_initialized.txt
+
+    - name: create .kube directory
+      become: yes
+      become_user: k8s
+      file:
+        path: $HOME/.kube
+        state: directory
+        mode: 0755
+
+    - name: copy admin.conf to user's kube config
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/k8s/.kube/config
+        remote_src: yes
+        owner: k8s
+
+    - name: install Pod network
+      become: yes
+      become_user: k8s
+      shell: curl https://docs.projectcalico.org/v3.6/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml -O && sed -i -e "s?192.168.0.0/16?172.16.0.0/16?g" calico.yaml && kubectl apply -f calico.yaml
+      #      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.11.0/Documentation/kube-flannel.yml >> pod_network_setup.txt
+      #shell: kubectl apply -f https://docs.projectcalico.org/v3.6/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml >> pod_network_setup.txt
+      #shell: kubectl apply -f https://docs.projectcalico.org/v3.3/getting-started/kubernetes/installation/hosted/rbac-kdd.yaml && kubectl apply -f https://docs.projectcalico.org/v3.3/getting-started/kubernetes/installation/hosted/kubernetes-datastore/calico-networking/1.7/calico.yaml >> pod_network_setup.txt
+      #shell: kubectl apply -f https://docs.projectcalico.org/v3.6/manifests/rbac-kdd-calico.yaml && kubectl apply -f https://docs.projectcalico.org/v3.6/getting-started/kubernetes/installation/hosted/calico.yaml >> pod_network_setup.txt
+      args:
+        chdir: $HOME
+        creates: pod_network_setup.txt
+

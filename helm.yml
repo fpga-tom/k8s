@@ -1,0 +1,25 @@
+- hosts: master
+  become: yes
+  tasks:
+  - name: install helm
+    shell: curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > get_helm.sh && chmod 700 get_helm.sh && ./get_helm.sh
+
+- hosts: master
+  become: yes
+  become_user: k8s
+  tasks:
+  - name: configure helm rbac
+    script: tiller-rbac-config.yaml > tiller_rbac_setup.txt
+    args:
+            executable: kubectl create -f
+            chdir: /home/k8s
+            creates: /home/k8s/tiller_rbac_setup.txt
+
+  - name: install helm
+    shell: /usr/local/bin/helm init --service-account=tiller --history-max 200 > helm_init_setup.txt
+    args:
+            chdir: $HOME
+            creates: helm_init_setup.txt
+
+
+  

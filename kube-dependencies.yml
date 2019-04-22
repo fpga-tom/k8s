@@ -1,0 +1,44 @@
+- hosts: all
+  become: yes
+  tasks:
+   - name: install yum-utils
+     package:
+       name: yum-utils
+       state: present
+
+   - name: install docker repo
+     shell: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+   - name: install Docker
+     package:
+       name: docker-ce
+       state: present
+
+   - name: add Kubernetes repository
+     yum_repository:
+      name: k8s
+      description: k8s
+      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+      gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+   - name: install kubelet
+     package:
+       name: kubelet
+       state: present
+
+   - name: enable kubelet
+     systemd: name=kubelet enabled=yes
+
+
+   - name: install kubeadm
+     package:
+       name: kubeadm
+       state: present
+
+- hosts: master
+  become: yes
+  tasks:
+   - name: install kubectl
+     package:
+       name: kubectl
+       state: present
